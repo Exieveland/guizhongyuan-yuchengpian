@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>柜中缘·渝城篇 — 互动情境小说</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{font-family:"PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif;background:#1a1410;color:#e8ddd0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px 16px 40px;}
+#game-container{max-width:600px;width:100%;background:#2a221e;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,0.6);padding:24px 20px 28px;border:1px solid #4a3c34;position:relative;}
+#scene-title{font-size:15px;color:#b8a090;letter-spacing:2px;margin-bottom:6px;text-align:center;}
+#scene-sub{font-size:13px;color:#8a7a6e;text-align:center;margin-bottom:18px;}
+#scene-image{width:100%;height:180px;background:linear-gradient(135deg,#3d2e24,#2a1e16);border-radius:12px;margin-bottom:18px;display:flex;align-items:center;justify-content:center;font-size:48px;color:#8a7a6e;border:1px solid #4a3c34;}
+#scene-text{font-size:16px;line-height:1.9;color:#dccfc4;margin-bottom:22px;padding:0 4px;text-align:left;}
+#scene-text .highlight{color:#e8b88a;font-weight:500;}
+#scene-text .dialog{color:#c4b0a0;font-style:italic;}
+#choices{display:flex;flex-direction:column;gap:12px;}
+.choice-btn{background:#3d3028;border:1px solid #5a4a3e;color:#e8ddd0;padding:14px 18px;border-radius:12px;font-size:15px;line-height:1.5;text-align:left;cursor:pointer;transition:all 0.2s;}
+.choice-btn:active{transform:scale(0.97);background:#4d3c32;border-color:#b89070;}
+.choice-btn:hover{background:#4d3c32;border-color:#b89070;}
+.choice-btn.disabled{opacity:0.5;pointer-events:none;}
+#status-bar{display:none;background:#1e1814;border-radius:10px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:#b8a090;gap:16px;flex-wrap:wrap;}
+#status-bar .stat{display:inline-flex;align-items:center;gap:6px;}
+#status-bar .stat-value{color:#e8b88a;font-weight:600;}
+#inventory{display:inline-flex;align-items:center;gap:6px;margin-left:auto;}
+#inventory .item{background:#3d3028;padding:2px 10px;border-radius:6px;font-size:12px;color:#dccfc4;}
+#footer{text-align:center;margin-top:20px;font-size:12px;color:#5a4a3e;}
+#restart-btn{background:transparent;border:1px solid #5a4a3e;color:#8a7a6e;padding:8px 24px;border-radius:8px;font-size:13px;cursor:pointer;transition:all 0.2s;margin-top:8px;}
+#restart-btn:active{background:#3d3028;color:#e8ddd0;}
+@media(max-width:480px){#game-container{padding:18px 14px 22px;}#scene-text{font-size:15px;line-height:1.8;}.choice-btn{padding:12px 14px;font-size:14px;}}
+</style>
+</head>
+<body>
+<div id="game-container">
+<div id="scene-title">柜中缘 · 渝城篇</div>
+<div id="scene-sub">一桩因"柜"而起的乱世奇缘</div>
+<div id="scene-image">🏮</div>
+<div id="status-bar">
+<span class="stat">❤️ 岳雷好感: <span id="stat-yue" class="stat-value">0</span></span>
+<span class="stat">🤝 哥哥信任: <span id="stat-brother" class="stat-value">0</span></span>
+<span class="stat">🔍 搜查严格度: <span id="stat-search" class="stat-value">0</span></span>
+<span id="inventory"></span>
+</div>
+<div id="scene-text"></div>
+<div id="choices"></div>
+<button id="restart-btn" onclick="restartGame()">🔄 重新开始</button>
+<div id="footer">渝言创——巴渝方言互动教学平台</div>
+</div>
+<script>
+// ========== 游戏状态 ==========
+let state = {
+  yueLikes: 0,       // 岳雷好感度
+  brotherTrust: 0,   // 哥哥信任值
+  searchStrict: 0,   // 搜查严格度
+  inventory: [],     // 道具列表
+  currentNode: 'start',
+  flags: {},         // 自定义标记
+  history: [],       // 访问历史
+  ending: null
+};
+
+// ========== 节点定义 ==========
+const nodes = {};
+
+// ========== 工具函数 ==========
+function updateStatusBar(){
+  document.getElementById('stat-yue').textContent = state.yueLikes;
+  document.getElementById('stat-brother').textContent = state.brotherTrust;
+  document.getElementById('stat-search').textContent = state.searchStrict;
+  const invContainer = document.getElementById('inventory');
+  if(state.inventory.length > 0){
+    invContainer.innerHTML = '🎒 ' + state.inventory.map(i => `<span class="item">${i}</span>`).join('');
+  } else {
+    invContainer.innerHTML = '';
+  }
+}
+
+function showStatusBar(show){
+  document.getElementById('status-bar').style.display = show ? 'flex' : 'none';
+}
+
+function goToNode(nodeId){
+  state.currentNode = nodeId;
+  state.history.push(nodeId);
+  const node = nodes[nodeId];
+  if(!node){
+    document.getElementById('scene-text').innerHTML = '（剧情加载中……）';
+    document.getElementById('choices').innerHTML = '';
+    return;
+  }
+  // 更新标题与文本
+  document.getElementById('scene-title').textContent = node.title || '柜中缘 · 渝城篇';
+  document.getElementById('scene-sub').textContent = node.subtitle || '';
+  document.getElementById('scene-image').textContent = node.icon || '🏮';
+  // 应用入场触发
+  if(node.onEnter) node.onEnter();
+  // 渲染文本（支持HTML）
+  document.getElementById('scene-text').innerHTML = node.text;
+  // 渲染选项
+  const choicesContainer = document.getElementById('choices');
+  choicesContainer.innerHTML = '';
+  if(node.choices && node.choices.length > 0){
+    node.choices.forEach((choice, index) => {
+      const btn = document.createElement('button');
+      btn.className = 'choice-btn';
+      btn.textContent = choice.text;
+      // 条件判断
+      if(choice.condition && !choice.condition()){
+        btn.classList.add('disabled');
+      } else {
+        btn.addEventListener('click', function(){
+          if(choice.effect) choice.effect();
+          if(choice.next) goToNode(choice.next);
+        });
+      }
+      choicesContainer.appendChild(btn);
+    });
+  }
+  updateStatusBar();
+}
+
+function restartGame(){
+  state = {
+    yueLikes: 0,
+    brotherTrust: 0,
+    searchStrict: 0,
+    inventory: [],
+    currentNode: 'start',
+    flags: {},
+    history: [],
+    ending: null
+  };
+  showStatusBar(true);
+  goToNode('start');
+}
+
+// 启动游戏
+window.onload = function(){ restartGame(); };
+
+// ========== 剧本节点 ==========
+
+// ---- 开场 / 启动节点 ----
+nodes.start = {
+  title: '柜中缘 · 渝城篇',
+  subtitle: '一桩因"柜"而起的乱世奇缘',
+  icon: '🏮',
+  text: '都说乱世难安生，这几日城门口查得紧得很，说是在追啥子忠良之后。<br><br><span class="highlight">重庆城郊·农家小院</span><br>竹篱笆围到半畦青菜，堂屋窗子底下，你——<span class="highlight">刘玉莲</span>——正坐到纳鞋底。<br>妈一早就去邻村走人户了，哥哥那个猴娃子赶场卖柴去了，要擦黑才回得来。<br><br>你个姑娘家家的，只盼到屋头平平安安的，哥哥少闯点祸。<br><br><span class="dialog">（这时候，院坝外头传来脚步声……）</span>',
+  choices: [
+    { text: '▶ 进入第一幕 · 小院闲居', next: 'm1_intro' }
+  ]
+};
+
+// ---- 第一幕：小院闲居 ----
+nodes.m1_intro = {
+  title: '第一幕 · 院坝头',
+  subtitle: '晌午时候 · 农家院坝',
+  icon: '🌿',
+  text: '院坝头的张婆婆路过，隔到篱笆喊：<br><br><span class="dialog">"玉莲呐，你妈走之前喊我跟你说，灶上温到红苕稀饭的，莫搞忘了哈！"</span><br><br><span class="highlight">【方言俚语热身关】</span><br>题目：<span class="highlight">"搞忘了"</span>在重庆话里头是啥子意思？',
+  choices: [
+    { text: 'A. 搞忘记咯/忘咯', effect: function(){ state.yueLikes += 1; state.brotherTrust += 1; }, next: 'm1_warmup_correct' },
+    { text: 'B. 搞懂咯/明白咯', next: 'm1_warmup_wrong1' },
+    { text: 'C. 搞砸咯/整坏咯', next: 'm1_warmup_wrong2' }
+  ]
+};
+
+nodes.m1_warmup_correct = {
+  title: '✅ 答对咯！',
+  subtitle: '你是个地地道道的重庆妹儿',
+  icon: '✨',
+  text: '你应了一声："晓得咯张婆婆，我记到的咯！"<br><br>张婆婆摆了摆手走了。你笑了下，硬是差点搞忘了——妈走之前特意交代到的。<br><br><span class="highlight">（俚语小贴士："搞忘了"＝搞忘记咯、忘咯。重庆人天天挂到嘴巴头说。）</span><br><br>你正要回屋头舀稀饭，忽然听到院门口传来一阵急得很的脚步声——不像平时过路的人，倒像是有人在跑。<br><br>你放下针线，走到门边，从门缝缝头往外头瞄了一眼——<br><br>一个年轻男子，衣裳上头沾到血，正靠在你们家篱笆边上喘大气。',
+  choices: [ { text: '▶ 继续', next: 'm1_meet_yue' } ]
+};
+
+nodes.m1_warmup_wrong1 = {
+  title: '❌ 答错咯',
+  subtitle: '这个词你再好生想哈',
+  icon: '🤔',
+  text: '张婆婆愣了哈："你这个女娃儿，我说的是莫搞忘了，你啷个扯到搞懂咯去了嘛？"<br><br><span class="highlight">（正确答案是"搞忘记咯/忘咯"。"搞忘了"＝搞忘记做啥子事了。）</span><br><br>你讪讪一笑，正要回屋头，忽然听到院门口传来一阵急得很的脚步声——一个年轻男子，衣裳上头沾到血，正靠在篱笆边上喘大气。',
+  choices: [ { text: '▶ 继续', next: 'm1_meet_yue' } ]
+};
+
+nodes.m1_warmup_wrong2 = {
+  title: '❌ 答错咯',
+  subtitle: '差一哈哈就对了',
+  icon: '🤔',
+  text: '张婆婆摆了摆手："搞忘了就是搞忘了嘛，又不是搞砸咯。你妈喊你莫把稀饭搞忘了喝！"<br><br><span class="highlight">（正确答案是"搞忘记咯/忘咯"。"搞忘了"＝搞忘记做啥子事了。）</span><br><br>你笑着应了，正要回屋头，忽然听到院门口传来一阵急得很的脚步声——一个年轻男子，衣裳上头沾到血，正靠在篱笆边上喘大气。',
+  choices: [ { text: '▶ 继续', next: 'm1_meet_yue' } ]
+};
+
+nodes.m1_meet_yue = {
+  title: '初遇 · 不请自来的客',
+  subtitle: '院坝外头 · 脚步声急',
+  icon: '🚪',
+  text: '那个人一抬头，正对到你从门缝缝头露出来的眼光。<br><br>他大概二十出头，脸盘子长得周正，眉毛眼睛都硬朗，就是一脸疲惫和着急。身上那件青衫破了好几处，袖口隐隐约约还有血印子。<br>他把声音压得很低，气都没喘匀净：<br><br><span class="dialog">"姑娘……在下遭人追，能不能……借你屋头躲一哈？"</span><br><br>远处隐隐约约传来人声和脚步声，好像正在往这边拢。<br><br>你心头上咯噔一下——这个人看起来不像坏人，但万一他就是官府在追的那个"忠良之后"……<br>你啷个办？',
+  choices: [
+    { text: '🚪 开门让他进来', effect: function(){ state.yueLikes += 2; state.searchStrict += 1; }, next: 'm1_let_in' },
+    { text: '🤔 先问清楚他是哪个再开门', effect: function(){ state.yueLikes += 1; }, next: 'm1_ask_first' },
+    { text: '😰 装到屋头没人，不出声', next: 'm1_ignore' }
+  ]
+};
+
+nodes.m1_let_in = {
+  title: '开门 · 一念之善',
+  subtitle: '你做了选择',
+  icon: '🚪✨',
+  text: '你咬了咬牙，飞快地拉开门栓，一把将那个人拉了进来，反手又把门闩上。<br><br>他踉跄了一哈，低声道："多谢姑娘……在下岳雷，不敢连累姑娘，只求躲一哈哈就走。"<br><br>岳雷——你心里头一紧。前几天城里贴的告示，说要追拿的不就是岳家后人么？<br><br>可你都把他拉进来了，总不能这时候又把他赶出去吧。<br><br>远处的人声越来越近了。<br><br><span class="highlight">你得赶紧找个地方把他藏起来。</span>',
+  choices: [ { text: '▶ 藏他到屋里去', next: 'm2_hide_choice' } ]
+};
+
+nodes.m1_ask_first = {
+  title: '谨慎 · 问清来历',
+  subtitle: '门里门外',
+  icon: '🤝',
+  text: '你把声音压低了问："你是哪个？啷个弄成这个样子的？"<br><br>他气都没喘匀就答了："在下姓岳，单名一个雷字。遭官府的人追了一路了……姑娘，再不走我就要连累你了。"<br><br>姓岳——你心头一凛。硬是那个被追拿的岳家后人。<br><br>可看他这个样子，也确实造孽。远处脚步声快要到了，你若不帮他，他今天怕是跑不脱了。',
+  choices: [
+    { text: '🚪 开门让他进来', effect: function(){ state.yueLikes += 2; state.searchStrict += 1; }, next: 'm1_let_in' },
+    { text: '😰 还是算咯，抱歉帮不到你', effect: function(){ state.yueLikes -= 1; }, next: 'm1_refuse' }
+  ]
+};
+
+nodes.m1_ignore = {
+  title: '装到没看到 · 闭门不出',
+  subtitle: '你选择不出声',
+  icon: '😰',
+  text: '你屏到呼吸，缩回屋头，不敢发出任何声音。<br><br>外头传来一阵杂乱的脚步声和呼喝声——<br>"这边！搜！"<br>"挨家挨户查！"<br><br>你从门缝缝头看到那个年轻人咬了咬牙，转身往巷子深处跑了。<br>没过好久，你就听到远处传来一声怒喝："站到！往哪儿跑！"<br>接着是一阵打斗声，然后……安静了。<br><br>你靠到门板，心跳得像打鼓一样。<br><br>后来你听说，那天官府在城东抓住了那个姓岳的人，当场就……<br><br><span class="highlight">【结局：事败被抓】</span><br>你没有伸出援手，岳雷被官差抓走，忠良之后就这么没得了。<br>而你——虽然没有遭直接牵连——但之后每次想起那个早上靠到篱笆边的年轻人，总觉得心头缺了点啥子。',
+  choices: [ { text: '🔄 重来一次？', next: 'start' } ],
+  onEnter: function(){ state.ending = '事败被抓'; showStatusBar(false); }
+};
+
+nodes.m1_refuse = {
+  title: '拒绝 · 明哲保身',
+  subtitle: '你选择了缩',
+  icon: '😞',
+  text: '你压低了声音说："对不住……我家就我一个姑娘家，实在不敢惹这个事……你往别处去哈。"<br><br>他眼中暗了一哈，但还是拱了拱手："多谢姑娘没有告发，岳某感激不尽。"转身就踉踉跄跄往巷子深处去了。<br><br>你关上门，心里头七上八下的。没过好久，外头传来一阵喧哗——他被抓到了。<br><br>晚黑，哥哥回来听说这事，拍到大腿说："玉莲你糊涂啊！岳家那是忠良！"妈叹到气，一句话都没说。<br><br><span class="highlight">【结局：家宅不宁】</span><br>你没有帮岳雷，他被官府抓走。之后邻里说闲话，说你见死不救，哥哥气得跟你吵了好几架，妈也病了一场。',
+  choices: [ { text: '🔄 重来一次？', next: 'start' } ],
+  onEnter: function(){ state.ending = '家宅不宁'; showStatusBar(false); }
+};
+
+// ---- 第二幕：险象环生 ----
+nodes.m2_hide_choice = {
+  title: '第二幕 · 险象环生',
+  subtitle: '藏他到哪里去？',
+  icon: '📦',
+  text: '你拉着岳雷进了堂屋，心里飞速盘算着——<br><br>院子里能藏人的地方不多，可用的有三个：<br><br><span class="highlight">① 大衣柜</span> — 在里屋，空间大，但官差要是搜里屋就危险了。<br><span class="highlight">② 柴房</span> — 在后院堆柴火的地方，不太起眼，但万一有人去抱柴就露馅了。<br><span class="highlight">③ 床底下</span> — 最方便，但最容易被查，要是掀床单一眼就能看到。<br><br>官差的吆喝声已经在巷口了——你选哪个？',
+  choices: [
+    { text: '📦 藏进大衣柜', effect: function(){ state.yueLikes += 1; state.searchStrict += 1; state.flags.hideSpot = 'wardrobe'; }, next: 'm2_hide_wardrobe' },
+    { text: '🪵 藏进柴房', effect: function(){ state.yueLikes += 1; state.flags.hideSpot = 'woodshed'; }, next: 'm2_hide_woodshed' },
+    { text: '🛏️ 藏到床底下', next: 'm2_hide_bed' }
+  ]
+};
+
+// 大衣柜分支
+nodes.m2_hide_wardrobe = {
+  title: '藏进大衣柜',
+  subtitle: '里屋 · 吱呀一声',
+  icon: '📦',
+  text: '你掀开柜门，把岳雷推进去，里面挂着的衣裳挡住了他的身影。你把柜门虚掩上，心跳快得像擂鼓。<br><br><span class="dialog">"藏好了，千万别出声。"</span><br><br>你刚坐回窗下拿起针线，院门就被拍响了——<br>"开门开门！查缉要犯！"<br><br>你深吸一口气，去开了门。两个官差站在门口，一脸凶相。',
+  choices: [
+    { text: '😰 紧张地解释家里没人来过', effect: function(){ state.searchStrict += 1; }, next: 'm2_search_wardrobe_nervous' },
+    { text: '😤 装作不耐烦，反呛他们', next: 'm2_search_wardrobe_angry' },
+    { text: '🙂 镇定自若，说家里就自己一个人', effect: function(){ state.yueLikes += 1; state.searchStrict -= 1; }, next: 'm2_search_wardrobe_calm' }
+  ]
+};
+
+// 柴房分支
+nodes.m2_hide_woodshed = {
+  title: '藏进柴房',
+  subtitle: '后院 · 柴堆后面',
+  icon: '🪵',
+  text: '你领着岳雷绕到后院柴房，把堆好的柴火扒拉开一块地方，让他蜷缩进去，再把柴火堆回原样。从外面看，完全看不出有人藏在里面。<br><br><span class="dialog">"委屈你一下。"</span><br>他低声道："姑娘大恩，岳某记下了。"<br><br>你回到前院，刚拿起针线，院门就被拍响了——<br>"开门！查缉要犯！"',
+  choices: [
+    { text: '😰 开门后紧张地说家里没人', next: 'm2_search_woodshed_nervous' },
+    { text: '😤 装作生气，质问他们吵什么', next: 'm2_search_woodshed_angry' },
+    { text: '🙂 镇定自若，从容应对', effect: function(){ state.yueLikes += 1; state.searchStrict -= 1; }, next: 'm2_search_woodshed_calm' }
+  ]
+};
+
+// 床底分支
+nodes.m2_hide_bed = {
+  title: '藏到床底下',
+  subtitle: '最危险的地方……',
+  icon: '🛏️',
+  text: '你一咬牙，指着里屋的床："钻进去！千万别出声！"岳雷二话不说，翻身就钻了进去，床单垂下来刚好遮住。<br><br>你坐回窗下，刚拿起针线，院门就被拍响了——可是你心里一直发毛：床底下太容易被发现了……<br><br>你去开了门，两个官差站在门口。',
+  choices: [
+    { text: '😰 紧张地说家里就自己一个人', effect: function(){ state.searchStrict += 2; }, next: 'm2_search_bed_nervous' },
+    { text: '🙂 强装镇定，反问他们有什么事', effect: function(){ state.searchStrict += 1; }, next: 'm2_search_bed_calm' }
+  ]
+};
+
+// 大衣柜 - 紧张
+nodes.m2_search_wardrobe_nervous = {
+  title: '搜查 · 心跳加速',
+  subtitle: '官差进了院子',
+  icon: '🔍',
+  text: '你紧张得声音都在抖："军爷……我家就我一个人，真的没见过啥子要犯……"那官差眯到眼睛打谅你："就你一个人？屋头有没有藏人，搜了才晓得。"说着就要往里屋走。<br><br>你心里头一凉——衣柜就在里屋，他要是翻柜子……',
+  choices: [
+    { text: '😱 拦着他，说女儿家的闺房不能乱进', effect: function(){ state.searchStrict += 2; }, next: 'm2_block_wardrobe' },
+    { text: '😰 没办法了，让他搜吧', next: 'm2_fail_wardrobe' }
+  ]
+};
+
+// 大衣柜 - 发脾气
+nodes.m2_search_wardrobe_angry = {
+  title: '搜查 · 怒斥官差',
+  subtitle: '你可不是好欺负的',
+  icon: '😤',
+  text: '你一叉腰，提高了嗓门："军爷！我一个姑娘家独门独户的，你们这么大动静，让邻里看到了我以后还怎么做人！"<br><br>那官差一愣，旁边另一个拉了拉他："算了算了，一个小姑娘家，别闹大了。"领头的哼了一声："行吧，但要是让我们知道你敢窝藏钦犯——有你好看的！"两人转身就走了。<br><br>你双腿一软，差点坐到地上。<br><br><span class="highlight">（搜查严格度增加了，官差走之前留了个心眼，说不定还会回来。）</span>',
+  choices: [ { text: '▶ 赶紧去看看岳雷', next: 'm3_brother_returns_trigger' } ],
+  onEnter: function(){ state.searchStrict += 1; }
+};
+
+// 大衣柜 - 镇定
+nodes.m2_search_wardrobe_calm = {
+  title: '搜查 · 从容应对',
+  subtitle: '你稳住了阵脚',
+  icon: '🙂',
+  text: '你微微一笑："军爷辛苦，小女子一个人在家，确实没见过什么可疑的人。几位若是不信，尽管看——只是屋里东西乱，别见笑。"<br><br>你落落大方的态度反倒让官差犹豫了。领头的往里扫了一眼，没看到什么异常，摆摆手："行了，我们还要去别家。要是见了可疑的人，到衙门报一声。"<br>"军爷慢走。"<br><br>你关上门，靠在门板上，长长地舒了一口气。<br><br><span class="highlight">（搜查严格度降低，官差没有起疑心。）</span>',
+  choices: [ { text: '▶ 去检查岳雷的情况', next: 'm3_brother_returns_trigger' } ]
+};
+
+// 柴房 - 紧张
+nodes.m2_search_woodshed_nervous = {
+  title: '搜查 · 心提到嗓子眼',
+  subtitle: '官差进了院子',
+  icon: '🔍',
+  text: '你结结巴巴地说家里没人，那官差却已经大步往后院去了："柴房门开着？我去看看。"<br><br>你心都要跳出来了——岳雷就在柴房里！那官差走到柴房门口，往里看了一眼……',
+  choices: [
+    { text: '🙏 祈祷他没发现', next: 'm2_search_woodshed_result' },
+    { text: '😰 跟过去打圆场，说柴房堆的都是杂物', effect: function(){ state.yueLikes += 1; }, next: 'm2_search_woodshed_result' }
+  ]
+};
+
+// 柴房 - 合并结果
+nodes.m2_search_woodshed_result = {
+  title: '搜查 · 虚惊一场',
+  subtitle: '柴堆掩护得很好',
+  icon: '🌿',
+  text: '那官差站在柴房门口，扫了一眼堆得满满当当的柴火，皱着眉头："这柴房够乱的。""是……家里烧柴多，堆得杂。"你赶紧接话。<br><br>他没再细看，转身招呼同伴："去下一家！"<br><br>你关好院门，腿都软了。跑到柴房扒开柴火，岳雷探出头来，也是一脸冷汗。<br><span class="dialog">"好险……姑娘机智。"</span>',
+  choices: [ { text: '▶ 让他先出来透透气', next: 'm3_brother_returns_trigger' } ]
+};
+
+// 柴房 - 镇定
+nodes.m2_search_woodshed_calm = {
+  title: '搜查 · 风平浪静',
+  subtitle: '你从容不迫',
+  icon: '🙂',
+  text: '你坦然开了门，微笑道："军爷辛苦咯，小女子一个人在家屋头，没得好查的。"官差扫了你一眼，又看了看院子——一切如常。"最近城头不太平，你自己小心点。看到陌生人记得报官。""哎，一定一定。"<br><br>官差转身就走，连后院都没切。<br><br>你关上门，终于松了一口气。去柴房把岳雷喊了出来，他满眼感激。',
+  choices: [ { text: '▶ 总算安全咯……', next: 'm3_brother_returns_trigger' } ]
+};
+
+// 柴房 - 发怒
+nodes.m2_search_woodshed_angry = {
+  title: '搜查 · 先声夺人',
+  subtitle: '你反客为主',
+  icon: '😤',
+  text: '你一开门就先发制人："大白天的吵吵嚷嚷的，还让不让人安生了！我一个姑娘家在家屋头，你们这个样子像啥子话嘛！"<br><br>那官差被你一顿呛，脸上挂不住："我们办案！你凶啥子凶！""办案就办案，我家又没藏人！你们要搜就赶紧搜，搜完好走！"<br><br>你一副理直气壮的样子，反倒让官差觉得搜一个姑娘家没得意思，随便看了一眼就走了。',
+  choices: [ { text: '▶ 总算走了……', next: 'm3_brother_returns_trigger' } ],
+  onEnter: function(){ state.searchStrict += 1; }
+};
+
+// 床底 - 紧张
+nodes.m2_search_bed_nervous = {
+  title: '搜查 · 心惊胆战',
+  subtitle: '床底下是最容易被发现的',
+  icon: '😰',
+  text: '你开了门，一个官差二话不说就推开你往里闯："搜！上头说了，挨家挨户查！"他直奔里屋，你跟在后面，心都要跳出来了。那官差站到床前头，弯到腰——',
+  choices: [
+    { text: '😱 赶紧拦他，说床底下都是灰', next: 'm2_fail_bed_block' },
+    { text: '😰 完了……只能听天由命了', next: 'm2_fail_bed' }
+  ]
+};
+
+// 床底 - 镇定
+nodes.m2_search_bed_calm = {
+  title: '搜查 · 勉强稳住',
+  subtitle: '但危险依然在',
+  icon: '😰',
+  text: '你开了门，尽量让自己看起来平静："几位军爷有啥子事？我家就我一个人……""少废话，搜！"那官差大步进了里屋，目光落在床上——床单垂到地上，看起来很正常。他环顾了一圈，没有掀床单。"行了，走吧。"<br><br>你松了一口气，但心里头清楚——太险了，要是他再仔细一哈哈……',
+  choices: [ { text: '▶ 赶紧把岳雷喊出来', next: 'm3_brother_returns_trigger' } ]
+};
+
+// 大衣柜被搜出 - 失败
+nodes.m2_fail_wardrobe = {
+  title: '💔 事败 · 柜中搜出',
+  subtitle: '官差打开了衣柜',
+  icon: '😰',
+  text: '那官差一把推开你，大步走进里屋，直接拉开了柜门——岳雷从衣柜头跌出来，脸色苍白。<br>"好哇！果然藏了人！"官差一拥而上，把岳雷反剪双手按到地上。岳雷看了你一眼，低声道：<span class="dialog">"姑娘……是我连累了你。"</span><br><br>你也因包庇被一路带去了衙门。妈回来花了钱打点，才把你保出来。但是岳雷……你再也冇得他的消息了。<br><br><span class="highlight">【结局：事败被抓】</span>',
+  choices: [ { text: '🔄 重来一次？', next: 'start' } ],
+  onEnter: function(){ state.ending = '事败被抓'; showStatusBar(false); }
+};
+
+// 床底搜出 - 拦失败
+nodes.m2_fail_bed_block = {
+  title: '💔 事败 · 床底搜出',
+  subtitle: '你太紧张了',
+  icon: '😰',
+  text: '你急忙上前拉住官差的膀子："军爷！床底下都是灰，莫把你的衣裳弄脏了……"那官差狐疑地看了你一眼——你这反应太刻意了。他一把甩开你的手，弯腰掀起床单——岳雷蜷到床底下，跟官差看个对眼。<br>"好大的胆子！给老子出来！"<br><br>官差们一拥而上。你也因包庇被带走了。<br><br><span class="highlight">【结局：事败被抓】</span>',
+  choices: [ { text: '🔄 重来一次？', next: 'start' } ],
+  onEnter: function(){ state.ending = '事败被抓'; showStatusBar(false); }
+};
+
+nodes.m2_fail_bed = {
+  title: '💔 事败 · 床底搜出',
+  subtitle: '根本藏不住',
+  icon: '😰',
+  text: '那官差弯腰掀起床单，一眼就看到了蜷到下面的岳雷。"哼，还想藏！给老子滚出来！"岳雷被拖了出来，官差们一拥而上把他按住。岳雷看了你一眼，目光里头满是歉疚：<span class="dialog">"对不住……"</span><br><br>你也因包庇被一路带去了衙门。<br><br><span class="highlight">【结局：事败被抓】</span>',
+  choices: [ { text: '🔄 重来一次？', next: 'start' } ],
+  onEnter: function(){ state.ending = '事败被抓'; showStatusBar(false); }
+};
+
+// 衣柜拦截 - 拦住了但起疑
+nodes.m2_block_wardrobe = {
+  title: '拦住了 · 但官差起疑了',
+  subtitle: '他们记住了你',
+  icon: '🔍',
+  text: '你拦到里屋门口，脸红到脖子根："军爷……那是我闺房，你们不能进去！"那官差上下打量了你一番，哼了一声："行，不进去也行——但你给老子记住了，要是让我们晓得你窝藏钦犯，你这房子都得给你拆了。"他转身走了，但你心里头清楚——他们记住了你。<br><br><span class="highlight">（搜查严格度上升，之后可能会杀个回马枪。）</span>',
+  choices: [ { text: '▶ 赶紧处理后续', next: 'm3_brother_returns_trigger' } ],
+  onEnter: function(){ state.searchStrict += 2; }
+};
+
+// ---- 第三幕：哥哥半路折返 ----
+nodes.m3_brother_returns_trigger = {
+  title: '第三幕 · 误会横生',
+  subtitle: '屋漏偏逢连夜雨',
+  icon: '😨',
+  text: '你刚把岳雷从藏身处喊出来，让他歇口气喝口水——院门突然被推开了。<br><br><span class="dialog">"玉莲！我回来了！集市今天散得早——"</span><br><br>是哥哥的声音。<br><br>你脑壳头"嗡"的一声——岳雷还站到堂屋头，手里端到碗，身上衣裳破到有血印子。哥哥一步跨进来，看到一个陌生男人站到自家堂屋，脸色瞬间变了：<br><br><span class="dialog">"你是哪个？！在老子屋头做啥子！玉莲，这是哪个？！"</span>',
+  choices: [
+    { text: '🗣️ 实话实说——他是遭追捕的忠良之后', next: 'm3_explain_honest' },
+    { text: '🤥 扯谎——说他是远房亲戚，路过借宿', effect: function(){ state.brotherTrust -= 2; }, next: 'm3_explain_lie' },
+    { text: '🤫 拉到一边悄咪咪跟哥哥说实情', effect: function(){ state.brotherTrust += 1; state.yueLikes += 1; }, next: 'm3_explain_whisper' }
+  ]
+};
+
+// ---- 哥哥折返 - 实话实说 ----
+nodes.m3_explain_honest = {
+  title: '实话实说',
+  subtitle: '你对哥哥讲了实情',
+  icon: '🗣️',
+  text: '你深吸一口气："哥，他是岳家的后人岳雷，遭官府追捕，跑到咱们这儿来了。我……我实在不忍心看到他遭抓。"<br><br>哥哥的脸色变了几变——先是大惊，然后皱起眉毛，最后重重地叹了口气。<br><br><span class="dialog">"岳家的……你晓不晓得这是多大的事？包庇钦犯，全家都要掉脑壳的！"</span><br><br>他嘴上这么说，但眼神在岳雷身上扫了一圈，看到那身伤，看到那双虽然疲惫但端正的眼睛——哥哥也是个血性汉子。<br><br>他闷到了一会儿，低声问：<br><span class="dialog">"那……你现在打算啷个办？"</span>',
+  choices: [
+    { text: '💪 求你帮他——我们一起想办法', effect: function(){ state.brotherTrust += 1; }, next: 'm3_help_choice' },
+    { text: '😞 你要是怕连累，那就算了，我让他走', effect: function(){ state.yueLikes -= 1; }, next: 'm3_give_up' }
+  ]
+};
+
+// ---- 哥哥折返 - 撒谎 ----
+nodes.m3_explain_lie = {
+  title: '撒谎 · 远房亲戚',
+  subtitle: '你编了个谎话',
+  icon: '🤥',
+  text: '你赶紧挤出一个笑："哥！这是我……远房表舅家的表哥，路过重庆，来借个宿！"<br><br>哥哥眯起眼睛，上下打量岳雷——那身血污、那身风尘，哪像什么走亲戚的？<br><br><span class="dialog">"表舅家的表哥？哪个表舅？我啷个不晓得？你莫不是在诓我？"</span><br><br>他往前一步，盯着岳雷的袖口血迹：<br><span class="dialog">"这血是咋回事？你说你是走亲戚的，你衣裳啷个破了？你到底是哪个？！"</span><br><br>谎言眼看就要被戳穿了——',
+  choices: [
+    { text: '🙏 说实话吧，瞒不住了', effect: function(){ state.brotherTrust -= 1; }, next: 'm3_explain_honest' },
+    { text: '😰 继续圆谎……', next: 'm3_lie_fail' }
+  ]
+};
+
+nodes.m3_lie_fail = {
+  title: '💔 谎言被揭穿',
+  subtitle: '哥哥不是那么好糊弄的',
+  icon: '😤',
+  text: '你支支吾吾地想继续圆谎，哥哥却一把推开你，走到岳雷面前一把揪住他衣领：<br><span class="dialog">"你到底是谁？不说清楚老子现在就去报官！"</span><br><br>岳雷没有挣扎，平静地看了他一眼："在下岳雷，岳家后人。令妹是为了救我，与令妹无关。要报官，冲我来便是。"<br><br>哥哥愣住了。他慢慢松开手，回头看了你一眼，目光复杂——气你撒谎，又气自己妹妹卷进这种事。<br><br><span class="highlight">（信任值降低，哥哥心中有了芥蒂。）</span><br><br>最终他闷声道：<span class="dialog">"……说吧，到底怎么回事。"</span>',
+  choices: [ { text: '▶ 从头解释一遍', next: 'm3_explain_honest' } ],
+  onEnter: function(){ state.brotherTrust -= 2; }
+};
+
+// ---- 哥哥折返 - 拉到一边小声说 ----
+nodes.m3_explain_whisper = {
+  title: '拉到一边 · 小声解释',
+  subtitle: '你拉住了哥哥的胳膊',
+  icon: '🤫',
+  text: '你没等哥哥发作，快步上前拉住他的胳膊，把他拽到院子角落里，压低声音飞快地说了一遍事情经过——他是哪个、啷个来的、官差刚走、他身上有伤、你硬是没法见死不救。<br><br>哥哥听到听着，脸上的怒气慢慢变成了吃惊，最后化成一声长叹。<br><br><span class="dialog">"你呀……你这胆子也太大了……"</span><br><br>他回头看了一眼站在堂屋里头那个身形笔挺的年轻人，低声补了一句：<br><span class="dialog">"……但你做得对。岳家的人，不能落到他们手里头。"</span><br><br><span class="highlight">（信任值上升，岳雷好感度上升。）</span>',
+  choices: [ { text: '▶ 那我们现在啷个办？', next: 'm3_help_choice' } ]
+};
+
+// ---- 商量如何相助 ----
+nodes.m3_give_up = {
+  title: '算了 · 让他走',
+  subtitle: '你不想连累哥哥',
+  icon: '😞',
+  text: '你低下头："哥，你要是不愿意……我就让他走，就当我没遇到过这个人。"<br><br>岳雷听到了，他放下碗，朝你拱了拱手："姑娘救命之恩，岳某来世再报。"转身就要往外头走。<br><br>哥哥却突然开口："站到。"<br><br>他沉默了好一会儿，闷声道：<br><span class="dialog">"……你这副样子出去，走不出半条街就要遭抓。到时候人家一审，问你在哪待过——你是想害死我妹妹？"</span><br><br>他烦躁地抓了抓脑壳："留下来！老子想想办法。"<br><br><span class="highlight">（哥哥嘴上凶，心头还是软的。信任值略降，但好歹留下来了。）</span>',
+  choices: [ { text: '▶ 商量办法', next: 'm3_help_choice' } ],
+  onEnter: function(){ state.brotherTrust -= 1; }
+};
+
+// ---- 相助方式选择 ----
+nodes.m3_help_choice = {
+  title: '啷个整？',
+  subtitle: '三人围着桌子坐下',
+  icon: '🤝',
+  text: '岳雷坐到条凳上，哥哥皱着眉在屋头来回踱步。窗外日头偏西，时间不多了——官差说不定还会回来查。<br><br>哥哥停下脚步，看到你问：<br><span class="dialog">"玉莲，你说咋办？是让他就这么走，还是想个法子把他送出去？"</span><br><br>你心头飞快地盘算到——',
+  choices: [
+    { text: '🪵 让他扮成卖柴的伙计，跟哥哥一起出城', effect: function(){ state.brotherTrust += 1; }, next: 'm3_plan_woodseller' },
+    { text: '📜 写一张路条，让他冒充送信的驿卒', effect: function(){ state.yueLikes += 1; }, next: 'm3_plan_courier' },
+    { text: '🌙 先让他藏一夜，明早趁天不亮走', effect: function(){ state.searchStrict += 1; }, next: 'm3_plan_overnight' }
+  ]
+};
+
+// ---- 相助方式：扮成柴夫 ----
+nodes.m3_plan_woodseller = {
+  title: '扮成卖柴伙计',
+  subtitle: '跟哥哥一起出城',
+  icon: '🪵',
+  text: '哥哥拍板："行！就让他扮成跟我一起卖柴的伙计。我天天出入城门，那些守门的都认得我，不会细查。"<br><br>他翻了件自己的旧衣裳给岳雷换起，又把柴火匀了一捆让岳雷挑到。<br><br>岳雷换好衣裳，倒真有几分农家小伙的样子。他朝你深深一揖：<br><span class="dialog">"姑娘大恩，岳某铭记在心。若他日还有命在，必当登门叩谢。"</span><br><br>哥哥在前面吆喝到开了院门，岳雷低下头，挑到柴跟到他身后。你站到门边，看到他们的背影消失在巷口，心悬到了嗓子眼……<br><br>后来呢？<br><br>后来你听说，那天傍晚有两个卖柴的出了城，守门的还跟其中一个开玩笑说"今儿柴捆得够紧实哈"。<br><br>故事到这儿……',
+  choices: [ { text: '▶ 看看结局如何……', next: 'm4_ending_assessment' } ]
+};
+
+// ---- 相助方式：写路条冒充驿卒 ----
+nodes.m3_plan_courier = {
+  title: '冒充驿卒送信',
+  subtitle: '路条的风险不小',
+  icon: '📜',
+  text: '你说："我来写一张路条，就说他是往重庆府送公文的驿卒。官差不敢拦送公文的。"<br><br>哥哥惊讶地看到你："你还会写这个？"<br>"爹以前教过我认字，也教过我几种笔迹。"你找出爹留下的旧纸笔，蘸墨落笔，写得飞快——你模仿的是县衙公文的格式，虽然不算太像，但天黑前糊弄守门的够用了。<br><br>岳雷接过路条，眼底带着深深的惊讶和敬意："姑娘不仅心善，还有恁个大的胆识和才学……"他把路条贴身收好。<br><br>哥哥又给了他一身干净衣裳，他把头发重新束好，换上行头，倒真有几分公差的样子。<br><br>临出门，他又回头看了你一眼——那一眼里头，有感激，有欣赏，还有一点别的啥子。',
+  choices: [ { text: '▶ 看他能不能顺利出城……', next: 'm4_ending_assessment' } ],
+  onEnter: function(){ if(state.inventory.indexOf('岳雷的半块玉佩') === -1){ state.inventory.push('岳雷的半块玉佩'); } }
+};
+
+// ---- 相助方式：留宿一夜 ----
+nodes.m3_plan_overnight = {
+  title: '留宿一夜',
+  subtitle: '等天不亮再走',
+  icon: '🌙',
+  text: '你说："现在走太急了，万一城门口盘查严怎么办？不如先藏一夜，明早天不亮我喊你们起来，趁城门刚开混出去。"<br><br>哥哥想了想，点头："也行。后半夜走最安全，那时候守门的困得不行，不会细看。"<br><br>你把岳雷安置在柴房里，铺了厚厚一层稻草，又抱了床旧被子过去。岳雷坐在稻草上，接过你递来的饼子和水，低声道：<br><span class="dialog">"姑娘……你为何要如此帮我？"</span><br><br>你沉默了一会儿，说："因为你是岳家的人。岳家是忠良，不该落到这个下场。"<br><br>他没有说话，只是在昏暗的油灯下看着你，目光很深。<br><br>夜深了。你躺在床上睡不着，心里乱糟糟的——明天一送他走，大概就再也见不着了。<br><br>子时刚过，你偷偷爬起来，去柴房看了一眼——他也没睡，靠在墙上，手里握着半块玉佩发呆。看到你来，他微微一怔，把玉佩收了起来。<br><br><span class="dialog">"……这个给你。"</span>他沉默了一会儿，忽然把那半块玉佩递到你手里。<br><span class="dialog">"我娘留给我的，说以后给……给重要的人。姑娘你留着，就当是个念想。"</span>',
+  choices: [ { text: '▶ 收下玉佩……', next: 'm3_overnight_pendant' } ],
+  onEnter: function(){ state.yueLikes += 2; }
+};
+
+nodes.m3_overnight_pendant = {
+  title: '玉佩 · 赠予',
+  subtitle: '他把最重要的东西给了你',
+  icon: '🟢',
+  text: '你接过那半块玉佩，入手温润，上面刻着一个"岳"字。<br><br>你想说点什么，却发现喉咙发紧。最后只挤出一句：<br><span class="dialog">"……我等你回来取。"</span><br><br>他笑了笑——这是你第一次看到他真正的笑容，烛光下，那个笑容很好看。<br><br>天没亮，哥哥就把岳雷叫了起来。你站在门后，看着两个身影一前一后消失在晨雾里。手里那半块玉佩，被你攥得发烫。<br><br>后来呢？<br><br>后来你听说，那天早上城门刚开，两个农人挑着担子出了城，守门的打着哈欠没多问。<br><br>故事到这儿……',
+  choices: [ { text: '▶ 看看结局如何……', next: 'm4_ending_assessment' } ],
+  onEnter: function(){ if(state.inventory.indexOf('岳雷的半块玉佩') === -1){ state.inventory.push('岳雷的半块玉佩'); } }
+};
+
+// ========== 第四幕：结局判定 ==========
+nodes.m4_ending_assessment = {
+  title: '第四幕 · 尘埃落定',
+  subtitle: '命运的分岔路口',
+  icon: '⚖️',
+  text: '一切都归于平静哒。<br><br>你坐到院子里头，手头捏到针线，但是一个字也绣不进去。<br><br>风从院墙外头吹进来，吹得竹叶沙沙响。<br><br>你的选择、你的勇气、你的善良——所有这些最后汇聚成了恁个一个故事……<br><br><span class="highlight">我们来看哈，命运给你的答案是啥子——</span>',
+  choices: [ { text: '🔮 揭晓结局', next: 'm4_ending_judge' } ]
+};
+
+nodes.m4_ending_judge = {
+  title: '🏮 结局',
+  subtitle: '天意难测，人心可鉴',
+  icon: '✨',
+  text: '',
+  choices: [],
+  onEnter: function(){
+    var resultText = '';
+    var hasPendant = state.inventory.indexOf('岳雷的半块玉佩') !== -1;
+    var hasSoles = state.inventory.indexOf('纳好的鞋底') !== -1;
+    
+    // 条件判断：6种结局
+    // 隐藏结局：共创新篇启 - 需玉佩 + 岳雷好感 >= 5 + 信任值 >= 2
+    if(hasPendant && state.yueLikes >= 5 && state.brotherTrust >= 2){
+      resultText = '——<span class="highlight">【结局：共创新篇启 · 隐藏结局】</span><br><br>' +
+        '三个月过后，重庆城的风声慢慢松了。<br><br>' +
+        '有一天傍晚，你正在院子里头收衣裳，院门遭人敲响了。<br>' +
+        '你打开门——一个风尘仆仆的年轻人站到门外头，穿到粗布衣裳，但是眉目间那股英气，你一眼就认出来了。<br><br>' +
+        '<span class="dialog">"玉莲姑娘，岳某……来取玉佩了。"</span><br><br>' +
+        '你怔到原地，手头攥到那半块已经磨得温润的玉佩，半天说不出一句话来。<br><br>' +
+        '他把另一半玉佩从怀里头掏出来，两块合到一起——严丝合缝。<br><br>' +
+        '<span class="dialog">"我投了义军，现在暂时安顿下来了。今日来，是想问你一句——</span><br><br>' +
+        '<span class="dialog" style="font-size:18px;">你愿不愿意，跟我走？"</span><br><br>' +
+        '晚风过竹篱笆，你的眼眶红了，但是你笑了。<br><br>' +
+        '<span class="highlight">玉莲放下了手中的针线，擦了哈手，看到了他——这个她舍命救下来的男人，这个把半块玉佩留给她的男人。</span><br><br>' +
+        '你点了点头。<br><br>' +
+        '——<span class="highlight">「柜中缘」终 · 共创新篇启</span>——';
+    }
+    // 良缘定 - 岳雷好感 >= 4 + 信任 >= 1
+    else if(state.yueLikes >= 4 && state.brotherTrust >= 1){
+      resultText = '——<span class="highlight">【结局：良缘定 · 两情相悦终成眷属】</span><br><br>' +
+        '岳雷成功出了城，投奔了南边的义军。<br><br>' +
+        '半年过后，一封没得署名的信被夹在张婆婆的菜篮子里头送到了你手上。<br>' +
+        '信上只有一行字：<br><br>' +
+        '<span class="dialog">"等天下太平了，岳某必回渝城，寻那位柜中藏人的姑娘。"</span><br><br>' +
+        '你把信叠好，放进妆奁最底层。<br>' +
+        '从那天起，你每天都着院子里头多坐一哈儿。<br><br>' +
+        '直到某一年春天，一个身影出现在篱笆外头——<br><br>' +
+        '<span class="highlight">他回来了。</span><br><br>' +
+        '——<span class="highlight">「柜中缘」终 · 良缘定</span>——';
+    }
+    // 江湖别 - 岳雷好感 >= 3
+    else if(state.yueLikes >= 3){
+      resultText = '——<span class="highlight">【结局：江湖别 · 相忘于江湖】</span><br><br>' +
+        '岳雷安全离开了重庆。<br><br>' +
+        '此后好几年，你偶尔会从路过的商人口中听到一些消息——' +
+        '说南边义军里头有个姓岳的年轻人，打仗很勇猛，很得人心。<br><br>' +
+        '你每次听到，都着微微一笑，低头继续纳手头的鞋底。<br><br>' +
+        '你没得再见过他。<br><br>' +
+        '但是你知道的，那个春天的午后，你打开门拉进来的那个衣衫沾血的年轻人——<br>' +
+        '他活得很好。<br><br>' +
+        '这就够啦。<br><br>' +
+        '——<span class="highlight">「柜中缘」终 · 江湖别</span>——';
+    }
+    // 兄妹守 - 信任值 >= 2
+    else if(state.brotherTrust >= 2){
+      resultText = '——<span class="highlight">【结局：兄妹守 · 守护家人】</span><br><br>' +
+        '岳雷走后，哥哥跟你好好谈了一回。<br><br>' +
+        '<span class="dialog">"玉莲，你做的是对头的事。但是以后有啥子事，要跟哥商量，不要一个人扛到起。你是我妹妹，天塌下来哥跟你一起扛。"</span><br><br>' +
+        '你红到眼眶点了点头。<br><br>' +
+        '从那以后，你跟哥哥更亲近了。他不再把你当小娃儿看，有事会问你意见，赶集回来会给你带一包花生糖。<br><br>' +
+        '日子一天天过去，你依然着院里纳鞋底，只是偶尔会抬头，看哈院门口——<br><br>' +
+        '像是等到啥子人。<br><br>' +
+        '——<span class="highlight">「柜中缘」终 · 兄妹守</span>——';
+    }
+    // 事败被抓 - 触发过结局标记或好感度过低
+    else if(state.ending === '事败被抓' || state.yueLikes <= 1){
+      resultText = '——<span class="highlight">【结局：事败被抓】</span><br><br>' +
+        '官差最后还是查到了你屋头。<br><br>' +
+        '岳雷遭抓了，你也因为包庇钦犯遭带去了衙门。母亲到处求人，花了屋头大半积蓄才把你保出来。<br><br>' +
+        '你回到家的那天，把门推开——院子里头空荡荡的，灶上的红苕稀饭早就凉透了。<br><br>' +
+        '此后的日子里，你时常想起那个靠到篱笆边喘气的年轻人。<br><br>' +
+        '如果当时……<br><br>' +
+        '<span class="highlight">但是故事没得如果。</span><br><br>' +
+        '——<span class="highlight">「柜中缘」终 · 事败被抓</span>——';
+    }
+    // 家宅不宁 - 默认失败结局
+    else {
+      resultText = '——<span class="highlight">【结局：家宅不宁】</span><br><br>' +
+        '你没得出手救岳雷。<br><br>' +
+        '那天的事后头传出去了，邻里都说你胆小怕事，见死不救。<br><br>' +
+        '哥哥气得跟你吵了好几次："你平时胆子不是挺大的嘛！啷个到了关键时候就怂了！"<br><br>' +
+        '母亲叹了口气，啥子都没说，但是你知道她心头也不好受。<br><br>' +
+        '晚上你一个人躺到床上，翻来覆去睡不着。<br><br>' +
+        '你没做错啥子——你只是保护了你自己跟这个家。<br><br>' +
+        '但是为啥子……<br><br>' +
+        '心头空落落的？<br><br>' +
+        '——<span class="highlight">「柜中缘」终 · 家宅不宁</span>——';
+    }
+    
+    document.getElementById('scene-text').innerHTML = resultText;
+    document.getElementById('choices').innerHTML = '<button class="choice-btn" onclick="restartGame()">🔄 再玩一回？</button>';
+    showStatusBar(true);
+    updateStatusBar();
+  }
+};
+</script>
+</body>
+</html>
