@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>柜中缘·渝城篇</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#0d0a08;display:flex;justify-content:center;align-items:center;min-height:100vh;font-family:"PingFang SC","Microsoft YaHei",sans-serif;}
+.wrap{width:100%;max-width:480px;text-align:center;padding:20px;}
+h1{color:#d4b896;font-size:18px;margin-bottom:12px;letter-spacing:2px;}
+video{width:100%;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.5);background:#000;}
+.tip{color:#8a7a6e;font-size:12px;margin-top:10px;}
+.loading{color:#d4b896;font-size:14px;padding:40px 0;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>柜中缘 · 渝城篇</h1>
+<div id="player" class="loading">视频加载中…</div>
+<div class="tip">如未自动播放，请点击播放按钮</div>
+</div>
+<script src="video/v1.js"></script>
+<script src="video/v2.js"></script>
+<script src="video/v3.js"></script>
+<script src="video/v4.js"></script>
+<script src="video/v5.js"></script>
+<script src="video/v6.js"></script>
+<script src="video/v7.js"></script>
+<script src="video/v8.js"></script>
+<script src="video/v9.js"></script>
+<script src="video/v10.js"></script>
+<script src="video/v11.js"></script>
+<script src="video/v12.js"></script>
+<script src="video/v13.js"></script>
+<script src="video/v14.js"></script>
+<script src="video/v15.js"></script>
+<script src="video/v16.js"></script>
+<script src="video/v17.js"></script>
+<script src="video/v18.js"></script>
+<script src="video/v19.js"></script>
+<script src="video/v20.js"></script>
+<script src="video/v21.js"></script>
+<script src="video/v22.js"></script>
+<script src="video/v23.js"></script>
+<script src="video/v24.js"></script>
+<script src="video/v25.js"></script>
+<script src="video/v26.js"></script>
+<script src="video/v27.js"></script>
+<script src="video/v28.js"></script>
+<script src="video/v29.js"></script>
+<script src="video/v30.js"></script>
+<script src="video/v31.js"></script>
+<script src="video/v32.js"></script>
+<script src="video/v33.js"></script>
+<script src="video/v34.js"></script>
+<script src="video/v35.js"></script>
+<script src="video/v36.js"></script>
+<script src="video/v37.js"></script>
+<script>
+(function(){
+  var b64 = [window._v1,window._v2,window._v3,window._v4,window._v5,window._v6,window._v7,window._v8,window._v9,window._v10,window._v11,window._v12,window._v13,window._v14,window._v15,window._v16,window._v17,window._v18,window._v19,window._v20,window._v21,window._v22,window._v23,window._v24,window._v25,window._v26,window._v27,window._v28,window._v29,window._v30,window._v31,window._v32,window._v33,window._v34,window._v35,window._v36,window._v37].join('');
+  var bin = atob(b64);
+  var len = bin.length;
+  var bytes = new Uint8Array(len);
+  for(var i=0;i<len;i++) bytes[i]=bin.charCodeAt(i);
+  var blob = new Blob([bytes],{type:'video/mp4'});
+  var url = URL.createObjectURL(blob);
+  var v = document.createElement('video');
+  v.controls = true; v.autoplay = true; v.playsInline = true; v.preload = 'auto';
+  v.src = url;
+  document.getElementById('player').innerHTML = '';
+  document.getElementById('player').appendChild(v);
+})();
+</script>
+</body>
+</html>
